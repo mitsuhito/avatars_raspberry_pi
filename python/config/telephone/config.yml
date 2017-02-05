@@ -1,0 +1,150 @@
+#
+# configraiton for avatar instance
+#
+
+debug:
+  avatar_instance_name: 'telephone'
+
+zmq:
+  heartbeat:
+    update_interval_hz: 10
+    dst:
+      - 'tcp://10.110.40.200:5001'
+      - 'ipc:///tmp/avatar/heartbeat'
+  teleop:
+    src:
+      - 'tcp://10.110.40.200:5000'
+      - 'tcp://10.100.10.82:5000'
+      - 'ipc:///tmp/avatar/teleop'
+
+inputs:
+  0:
+    name: 'max_sonar_tty'
+    connection: 'serial'
+    address: '/dev/ttyS0'
+    params:
+      emergency_stop_threshold_mm: 50
+      sampling_rate_hz: 20
+  1:
+    name: 'limit_sw_1'
+    connection: 'gpio'
+    address: 17
+    params: ~
+  2:
+    name: 'limit_sw_2'
+    connection: 'gpio'
+    address: 18
+    params: ~
+  3:
+    name: 'telephone_receiver_sw'
+    connection: 'gpio'
+    address: 19
+    params:
+      mode: 'pullup'
+
+outputs:
+  0:
+    driver:
+      type: 'adafruit_motor_hat'
+      connection: 'i2c'
+      address: 0x60
+    name: 'left wheel'
+    pin: 1
+    type: 'dc'
+    params:
+      speed:
+        max: 255
+        min: 0
+      is_bidirectional: true
+  1:
+      driver:
+        type: 'adafruit_motor_hat'
+        connection: 'i2c'
+        address: 0x60
+      name: 'right wheel'
+      pin: 2
+      type: 'dc'
+      params:
+        speed:
+          max: 255
+          min: 0
+        is_bidirectional: true
+  2:
+    driver:
+      type: 'arduino_custom_motor_hat'
+      connection: 'i2c'
+      address: 0x61
+    name: 'stepper 1'
+    pin: 1
+    type: 'stepper'
+    params:
+      steps: 200
+      speed_rpm:
+        max: 255
+        min: 0
+      is_bidirectional: true
+  3:
+    driver:
+      type: 'arduino_custom_motor_hat'
+      connection: 'i2c'
+      address: 0x61
+    name: 'stepper 2'
+    pin: 2
+    type: 'stepper'
+    params:
+      steps: 200
+      speed_rpm:
+        max: 255
+        min: 0
+      is_bidirectional: true
+  4:
+    driver:
+      type: 'direct'
+      connection: 'gpio'
+      address: ~
+    name: 'bell'
+    pin: 16
+    type: ~
+    params: ~
+  5:
+    driver:
+      type: 'direct'
+      connection: 'gpio'
+      address: ~
+    name: 'blower'
+    pin: 13
+    type: ~
+    params: ~
+
+actuation_map:
+  # YAML format
+  # 'FUNCTION_NAME':
+  #   OUTPUT_INDEX: 'param:wait_ms param:wait_ms param:wait_ms ...'
+  FORWARD:
+      0: '255, 1000, 0, 0'
+      1: '255, 1000, 0, 0'
+  BACK:
+      # jsut for debug
+      0: '-255, 1000, 0, 0'
+      1: '-255, 1000, 0, 0'
+  LEFT:
+      0: '100, 1000, 0, 0'
+      1: '0, 1000'
+  RIGHT:
+      0: '0, 1000, 0, 0'
+      1: '100, 1000'
+  STOP:
+      0: '0, 0'
+      1: '0, 0'
+      2: '0, 0'
+      3: '0, 0'
+      4: '0, 0'
+      5: '0, 0'
+
+  RING_BELL:
+      4: '255, 100, 0, 100, 255, 100, 0, 100, 255, 100, 0, 100, 255, 100, 0, 100, 255, 100, 0, 100'
+
+  BLOWER_ON:
+      5: '255, 0'
+  BLOWER_OFF:
+      5: '0, 0'
