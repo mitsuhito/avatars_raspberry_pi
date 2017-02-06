@@ -51,7 +51,7 @@ class Pinger(object):
             'out_values': self.out_values
         }))
         send_faild = False
-        print __name__, 'update()::', self.dest
+        #print __name__, 'update()::', self.dest
         try:
             self.__socket.send(json.dumps({
                 'id': self.__reqid,
@@ -78,16 +78,16 @@ class Pinger(object):
 
         self.respond = time.time() - self.__lastrecv
 
-        print "now | servertime -> {0} | {1}".format(
-            time.time(), self.__respond_raw
-        )
-        print "response time -> {0}".format(self.respond)
+#        print "now | servertime -> {0} | {1}".format(
+#            time.time(), self.__respond_raw
+#        )
+#        print "response time -> {0}".format(self.respond)
 
         self.__timer = Timer(1./self.interval_hz, self.update)
         self.__timer.start()
 
     def reset_socket(self):
-        print __name__, 'reset_socket()::', self.dest
+        #print __name__, 'reset_socket()::', self.dest
         self.__socket.close()
         # - reconncet
         self.__socket = self.__ctx.socket(zmq.REQ)

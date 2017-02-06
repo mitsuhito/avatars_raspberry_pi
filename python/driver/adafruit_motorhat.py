@@ -196,6 +196,7 @@ class AdafruitDCMotor:
     def run(self, command):
         if not self.MC:
             return
+        
         if (command == AdafruitMotorHAT.FORWARD):
             self.MC.set_pin(self.in2_pin, 0)
             self.MC.set_pin(self.in1_pin, 1)
@@ -205,11 +206,13 @@ class AdafruitDCMotor:
         if (command == AdafruitMotorHAT.RELEASE):
             self.MC.set_pin(self.in1_pin, 0)
             self.MC.set_pin(self.in2_pin, 0)
+
     def set_speed(self, speed):
         if (speed < 0):
             speed = 0
         if (speed > 255):
             speed = 255
+        print __name__, speed
         self.MC._pwm.set_pwm(self.pwm_pin, 0, speed*16)
 
 class AdafruitMotorHAT:
@@ -250,3 +253,25 @@ class AdafruitMotorHAT:
         if (num < 1) or (num > 4):
             raise NameError('MotorHAT Motor must be between 1 and 4 inclusive')
         return self.motors[num-1]
+
+
+
+if __name__ == '__main__':
+    import sys
+    print sys.argv[0], '__main__'
+    amh = AdafruitMotorHAT()
+    for i in xrange(1,5,1):
+        print i, 'forward'
+        amh.get_motor(i).set_speed(255)
+        amh.get_motor(i).run(AdafruitMotorHAT.FORWARD)
+        time.sleep(10)
+        print i, 'backward'
+        amh.get_motor(i).set_speed(255)
+        amh.get_motor(i).run(AdafruitMotorHAT.BACKWARD)
+        time.sleep(10)
+        print i, 'release'
+        amh.get_motor(i).set_speed(0)
+        amh.get_motor(i).run(AdafruitMotorHAT.RELEASE)
+        time.sleep(0.1)
+    
+    sys.exit(0)

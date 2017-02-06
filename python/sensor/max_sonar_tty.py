@@ -19,6 +19,7 @@ class MaxSonar(object):
         self.__serial = Serial(self.__dev_addr, 9600, 8, 'N', 1, timeout=1)
         self.__serial.flushInput()
         self.__is_running = False
+        self.threshold = 0;
 
     def start(self):
         #self.__serial.flushInput()
