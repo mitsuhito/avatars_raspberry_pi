@@ -52,21 +52,21 @@ outputs:
     params:
       speed:
         max: 255
-        min: 0
-      # is_bidirectional: true
+    is_safe: false
+
   1:
-      driver:
-        type: 'adafruit_motor_hat'
-        connection: 'i2c'
-        address: 0x60
-      name: 'right wheel'
-      pin: 3
-      type: 'dc'
-      params:
-        speed:
-          max: 255
-          min: 0
-        # is_bidirectional: true
+    driver:
+      type: 'adafruit_motor_hat'
+      connection: 'i2c'
+      address: 0x60
+    name: 'right wheel'
+    pin: 3
+    type: 'dc'
+    params:
+      speed:
+        max: 255
+    is_safe: false
+
   2:
     driver:
       type: 'arduino_custom_motor_hat'
@@ -79,8 +79,8 @@ outputs:
       steps: 200
       speed_rpm:
         max: 255
-        min: 0
-      # is_bidirectional: true
+    is_safe: false
+
   3:
     driver:
       type: 'arduino_custom_motor_hat'
@@ -94,7 +94,8 @@ outputs:
       speed_rpm:
         max: 255
         min: 0
-      # is_bidirectional: true
+    is_safe: false
+
   4:
     driver:
       type: 'direct'
@@ -104,6 +105,8 @@ outputs:
     pin: 16
     type: ~
     params: ~
+    is_safe: true
+
   5:
     driver:
       type: 'direct'
@@ -113,42 +116,42 @@ outputs:
     pin: 13
     type: ~
     params: ~
+    is_safe: true
 
 actuation_map:
   # YAML format
   # 'FUNCTION_NAME':
   #   OUTPUT_INDEX: 'param:wait_ms param:wait_ms param:wait_ms ...'
   FORWARD:
-      0: '255, 0'
-      1: '255, 0'
-      # 0: '255, 300, 0, 0' # stop every time
-      # 1: '255, 300, 0, 0' # stop every time
+      # 0: '255, 0'
+      # 1: '255, 0'
+      0: '%d, 300, 0, 0' # stop every time
+      1: '%d, 300, 0, 0' # stop every time
   BACK:
       # jsut for debug
-      0: '-255, 300, 0, 0'
-      1: '-255, 300, 0, 0'
+      0: '-1*%d, 300, 0, 0'
+      1: '-1*%d, 300, 0, 0'
   LEFT:
-      # 0: '-100, 300, 0, 0'
-      # 1: '100, 300, 0, 0'
-      0: '-100, 0'
-      1: '100, 0'
+      0: '-1*%d, 300, 0, 0'
+      1: '%d, 300, 0, 0'
+      # 0: '-100, 0'
+      # 1: '100, 0'
   RIGHT:
-      # 0: '100, 300, 0, 0'
-      # 1: '-100, 300, 0, 0'
-      0: '100, 0'
-      1: '-100, 0'
+      0: '%d, 300, 0, 0'
+      1: '-1*%d, 300, 0, 0'
+      # 0: '100, 0'
+      # 1: '-100, 0'
   STOP:
       0: '0, 0'
       1: '0, 0'
       2: '0, 0'
       3: '0, 0'
-      4: '0, 0'
-      5: '0, 0'
+
 
   RING_BELL:
       4: '255, 100, 0, 100, 255, 100, 0, 100, 255, 100, 0, 100, 255, 100, 0, 100, 255, 100, 0, 100'
 
   BLOWER_ON:
-      5: '255, 0'
+      5: '255, 50'
   BLOWER_OFF:
-      5: '0, 0'
+      5: '0, 50'

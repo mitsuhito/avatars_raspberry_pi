@@ -10,9 +10,10 @@ import random
 import logging
 import ast
 import signal
-from Queue import Queue
+# from Queue import Queue
 from multiprocessing import Process
 from threading import Timer
+import threading
 from datetime import datetime
 from pprint import pprint
 
@@ -22,13 +23,16 @@ import RPi.GPIO as GPIO
 from abc import ABCMeta
 from abc import abstractmethod
 
-from driver.arduino_motor_driver import ArduinoMotorDriver
-from driver.adafruit_motorhat import AdafruitMotorHAT
-from driver.adafruit_motorhat import AdafruitDCMotor
-from driver.adafruit_motorhat import AdafruitStepperMotor
-from driver.adafruit_pwm_servo_driver import PWM
+# from avatar.output.driver.arduino_motor_driver import ArduinoMotorDriver
+# from avatar.output.driver.adafruit_motorhat import AdafruitMotorHAT
+# from avatar.output.driver.adafruit_motorhat import AdafruitDCMotor
+# from avatar.output.driver.adafruit_motorhat import AdafruitStepperMotor
+# from avatar.output.driver.adafruit_pwm_servo_driver import PWM
+from avatar.output.actuator import Actuator
 
-from sensor.max_sonar_tty import MaxSonar
+from avatar.input.driver.max_sonar_tty import MaxSonar
+from avatar.input.sensor import Sensor
+
 from util.pinger import Pinger
 
 import zmq
@@ -41,7 +45,7 @@ from tornado.ioloop import IOLoop
 class AvatarBase(object):
     __metaclass__ = ABCMeta
     __instance = None
-    
+
     def __new__(class__, *args, **keys):
         if class__.__instance is None:
             class__.__instance = object.__new__(class__)
@@ -54,30 +58,34 @@ class AvatarBase(object):
         if config is None:
             raise TypeError('laod config file')
         self._config = config
-        
+
         self._instance_name = self._config['instance_name']
         print 'AvatarBase::__init__():', self._instance_name
         #pprint(self._config)
-        
+
         self._inputs = []
         self._outputs = []
         self._pingers = []
-        
-        GPIO.setmode(GPIO.BCM)
+
         self._init_inputs(self._config['inputs'])
         self._init_outputs(self._config['outputs'])
-        
+
+        #
+        # TODO : use iface neame
+        #
+        self._topic_filter = ''
+
         self.ioloop = IOLoop.instance()
         self._init_pingers(self._config['zmq']['heartbeat']['dst'], interval_hz=self._config['zmq']['heartbeat']['update_interval_hz'])
         self._init_zmq_subscribers(self._config['zmq']['teleop']['src'])
 
         self._is_running = False
-        self._update_rate_hz = 50
-        self._timer = Timer(1./self._update_rate_hz, self._runloop)
-        #self._timer.start()
+        self._mainloop_update_rate_hz = 50
+        self.__watchdog_timer_update_rate_hz = 200
 
     def __del__(self):
         print __name__, '__del__()::', 'cleanup mess'
+
         del self._inputs[:]
         del self._outputs[:]
         del self._pingers[:]
@@ -92,7 +100,7 @@ class AvatarBase(object):
                 p.run()
                 self._pingers.append(p)
         #print self._pingers
-    
+
     def _init_zmq_subscribers(self, hosts=[]):
         self._zmq_ctx = zmq.Context()
         self._teleop_subs_socket = self._zmq_ctx.socket(zmq.SUB)
@@ -102,178 +110,149 @@ class AvatarBase(object):
                 self._teleop_subs_socket.connect(target)
                 zmq_stream = ZMQStream(self._teleop_subs_socket)
                 zmq_stream.on_recv(self._zmq_teleop_stream_handler)
-                # use ip address as topic filter
-                topic_filter = ''
-                self._teleop_subs_socket.setsockopt(zmq.SUBSCRIBE, topic_filter)
-
-    def _zmq_teleop_stream_handler(self, msg):
-        print __name__, '_zmq_teleop_stream_handler()::', msg
-        topic_name = msg[0]
-        actuation_name = msg[1]
-        actuation_pattern = self._config['actuation_map'][actuation_name]
-        print 'actuation_pattern', actuation_pattern
-        if actuation_pattern is not None:
-            self.actuate(actuation_pattern)
+                self._teleop_subs_socket.setsockopt(zmq.SUBSCRIBE, self._topic_filter)
 
     def _init_inputs(self, inputs_conf=None):
         if inputs_conf is None:
             return
         #print len(inputs_conf)
+        self._inputs = []
         for i in xrange(len(inputs_conf)):
-            sensor_name = inputs_conf[i]['name']
-            connection = inputs_conf[i]['connection']
-            addr = inputs_conf[i]['address']
-            params = inputs_conf[i]['params']
-
-            print sensor_name, connection, addr
-            
-            if connection == 'serial' and sensor_name == 'max_sonar_tty':
-                #print params['emergency_stop_threshold_mm']
-                ultrasonic_sensor = MaxSonar(addr=addr, rate_hz=params['sampling_rate_hz'])
-                ultrasonic_sensor.start()
-                self._inputs.append(ultrasonic_sensor)
-            elif connection == 'gpio':
-                if params is None:
-                    GPIO.setup(addr, GPIO.IN)
-                elif params['mode'] == 'pullup':
-                    GPIO.setup(addr, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-                    GPIO.add_event_detect(addr, GPIO.FALLING, callback=self._gpio_event_handler, bouncetime=20)
-                elif params['mode'] == 'pulldown':
-                    GPIO.setup(addr, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
-                    GPIO.add_event_detect(addr, GPIO.RISING, callback=self._gpio_event_handler, bouncetime=20)
-                self._inputs.append(addr)
+            sensor = Sensor(inputs_conf[i])
+            self._inputs.append(sensor)
 
     def _init_outputs(self, outputs_conf=None):
         if outputs_conf is None:
             return
         #print len(outputs_conf)
+        self._outputs = []
         for i in xrange(len(outputs_conf)):
-            actuator_name = outputs_conf[i]['name']
-            driver = outputs_conf[i]['driver']
-            pin = outputs_conf[i]['pin']
-            params = outputs_conf[i]['params']
-            
-            print actuator_name, driver, pin, params
-            
-            if driver['type'] == 'adafruit_motor_hat':
-                amh = AdafruitMotorHAT(addr=driver['address'])
-                self._outputs.append(amh)
-            if driver['type'] == 'arduino_custom_motor_hat':
-                amd = ArduinoMotorDriver(addr=driver['address'])
-                self._outputs.append(amd)
-            elif driver['type'] == 'direct':
-                GPIO.setup(pin, GPIO.OUT)
-                self._outputs.append(pin)
-
-    def _max_sonar_event_hander(self):
-        pass
-
-    def _driver_process_worker(self, sequence=None, driver=None, type=None, pin=0):
-        print '_driver_process_worker()::', sequence, driver
-        if driver is None or type is None or sequence is None:
-            return
-        
-        for j in xrange(0, len(sequence), 2):
-            if isinstance(driver, AdafruitMotorHAT):
-                if type == 'dc':
-                    speed = sequence[j]
-                    wait_ms = sequence[j+1]
-                    print ' --- ', j, speed, wait_ms
-                    
-                    motor = driver.get_motor(pin)
-                    if self._emergency_stop == True:
-                        motor.set_speed(0)
-                        motor.run(AdafruitMotorHAT.RELEASE)
-                        break
-                    motor.set_speed(abs(speed))
-                    if speed > 0:
-                        motor.run(AdafruitMotorHAT.FORWARD)
-                    elif speed < 0:
-                        motor.run(AdafruitMotorHAT.BACKWARD)
-                    else:
-                        motor.run(AdafruitMotorHAT.RELEASE)
-                    
-                    time.sleep(wait_ms/1000.)
-
-                elif type == 'stepper':
-                    #
-                    # TODO: finish implement
-                    #
-                    steps = sequence[j]
-                    wait_ms = sequence[j+1]
-                    speed_rpm = 40
-                    print ' --- ', j, steps, wait_ms
-                    
-                    stepper = driver.get_stepper(200, pin)
-                    if self._emergency_stop == True:
-                        stepper.run(AdafruitMotorHAT.RELEASE)
-                        break
-                    stepper.set_speed(abs(speed_rpm))
-                    if steps > 0:
-                        #stepper.one_step(AdafruitMotorHAT.FORWARD, AdafruitMotorHAT.DOUBLE)
-                        stepper.step(steps,  AdafruitMotorHAT.FORWARD, AdafruitMotorHAT.DOUBLE)
-                    elif steps < 0:
-                        #stepper.one_step(AdafruitMotorHAT.FORWARD, AdafruitMotorHAT.DOUBLE)
-                        stepper.step(abs(steps),  AdafruitMotorHAT.BACKWARD, AdafruitMotorHAT.DOUBLE)
-                    else:
-                        stepper.run(AdafruitMotorHAT.RELEASE)
-                    time.sleep(wait_ms/1000.)
-                    pass
-                elif type == 'servo':
-                    # TODO: finish implement
-                    pass
-
-                elif isinstance(driver, ArduinoMotorDriver):
-                    # TODO: finish implement
-                    pass
-                elif isinstance(driver, int):
-                    # TODO: finish implement
-                    pass
-        
-        print __name__, '_worker done'
+            actuator = Actuator(outputs_conf[i])
+            self._outputs.append(actuator)
 
     def actuate(self, task=None):
         print __name__, 'actuate()::', task
         if task is None:
-            raise TypeError('task is empty.nothing to do!')
-        ps = []
+            raise TypeError('task is empty. nothing to do!')
+        # ps = []
+        actuation_threads = []
+
+        if self._emergency_stop == True:
+            return
+
         for motor_id in xrange(len(task)):
             sequence = ast.literal_eval(task[motor_id])
-            driver_conf = self._config['outputs'][motor_id]
-            print '\n', motor_id, datetime.today(), sequence, driver_conf, '\n'
-            if len(sequence) % 2 != 0:
-                raise RuntimeError(__name__, 'corrupt actuation sequence')
-            
-            pin = driver_conf['pin']
-            type = driver_conf['type']
-            p = Process(target=self._driver_process_worker, args=(sequence, self._outputs[motor_id], type, pin, ))
-            ps.append(p)
+            actuator = self._outputs[motor_id]
+            # actuator.actuate(sequence)
+            thread = threading.Thread(target=actuator.actuate, name="actuator_th_"+str(motor_id), args=(sequence,))
+            actuation_threads.append(thread)
+            # p = Process(target=actuator.actuate, args=(sequence, ))
+            # ps.append(p)
 
-        for p in ps:
-            p.start()
-        for p in ps:
-            p.join()
+        for t in actuation_threads:
+            t.start()
+        for t in actuation_threads:
+            t.join()
+
+        # for p in ps:
+        #     p.start()
+        # for p in ps:
+        #     p.join()
 
     def start(self):
         print __name__, datetime.today(), 'start()::'
         self._is_running = True
         self._emergency_stop = False
-        self._timer = Timer(1./self._update_rate_hz, self._runloop)
-        self._timer.start()
+
+        self._watchdog_timer =  Timer(1./self.__watchdog_timer_update_rate_hz, self._watchdog)
+        self._watchdog_timer.start()
+
+        self._mainloop_update_timer = Timer(1./self._mainloop_update_rate_hz, self._update)
+        self._mainloop_update_timer.start()
+
+        self._pingers_in_timer =  Timer(1./self._mainloop_update_rate_hz, self.__update_pingers_input_values)
+        self._pingers_in_timer.start()
+
+        self._pingers_out_timer =  Timer(1./self._mainloop_update_rate_hz, self.__update_pingers_output_values)
+        self._pingers_out_timer.start()
+
         self.ioloop.start()
 
     def stop(self):
         print __name__, datetime.today(), 'stop()::'
         self._is_running = False
         self._emergency_stop = True
-        self._timer.cancel()
+        self._mainloop_update_timer.cancel()
+        self._pingers_in_timer.cancel()
+        self._pingers_out_timer.cancel()
+        self._watchdog_timer.cancel()
+
         self.ioloop.stop()
 
-    @abstractmethod
-    def _runloop(self):
-        pass
+    def __update_pingers_input_values(self):
+        for pinger in self._pingers:
+            statuses = []
+            for sensor in self._inputs:
+                statuses.append(sensor.read()[1:])
+            pinger.in_values = statuses
+        self._pingers_in_timer =  Timer(1./self._mainloop_update_rate_hz, self.__update_pingers_input_values)
+        self._pingers_in_timer.start()
+
+    def __update_pingers_output_values(self):
+        for pinger in self._pingers:
+            statuses = []
+            for actuator in self._outputs:
+                statuses.append(actuator.status)
+            pinger.out_values = statuses
+        self._pingers_out_timer =  Timer(1./self._mainloop_update_rate_hz, self.__update_pingers_output_values)
+        self._pingers_out_timer.start()
+
+    def _zmq_teleop_stream_handler(self, msg):
+        print __name__, '_zmq_teleop_stream_handler()::', msg
+        if self._topic_filter == '': # jsut for debug
+            msg = msg[1:]
+        actuation_name = msg[0]
+        actuation_params = (msg[1])
+        # replace parameters from given message
+        actuation_sequence = eval((self._config['actuation_map'][actuation_name]) % actuation_params)
+        # str = '-1*%d' % 54
+
+        print 'actuation_sequence: ', actuation_sequence
+        if actuation_sequence is not None:
+            self.actuate(actuation_sequence)
+
+    # @abstractmethod
+    # def _gpio_event_handler(self):
+    #     pass
+    #
+    # #@abstractmethod
+    # def _max_sonar_event_hander(self):
+    #     pass
+
+    def _watchdog(self):
+        for sensor in self._inputs:
+            if isinstance(sensor, MaxSonar):
+                if sensor.get_distance_raw_mm() < sensor.config['params']['emergency_stop_threshold_mm']:
+                    self.emergency_stop(True)
+                else:
+                    self.emergency_stop(False)
+                break
+        self._watchdog_timer =  Timer(1./self.__watchdog_timer_update_rate_hz, self._watchdog)
+        self._watchdog_timer.start()
+
+
+    def emergency_stop(self, state):
+        self._emergency_stop = state
+        for pinger in self._pingers:
+            if self._emergency_stop == True:
+                pinger.status = 'emergency stopped'
+            else:
+                pinger.status = 'running'
+
+        if self._emergency_stop == True:
+            for actuator in self._outputs:
+                actuator.set_emergency_stop(True)
 
     @abstractmethod
-    def _gpio_event_handler(self):
+    def _update(self):
         pass
-
