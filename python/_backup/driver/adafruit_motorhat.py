@@ -193,6 +193,9 @@ class AdafruitDCMotor:
         self.in1_pin = in1
         self.in2_pin = in2
 
+    def __del__(self)
+        self.run(AdafruitMotorHAT.RELEASE)
+
     def run(self, command):
         if not self.MC:
             return
@@ -233,6 +236,9 @@ class AdafruitMotorHAT:
         self.steppers = [ AdafruitStepperMotor(self, 1), AdafruitStepperMotor(self, 2) ]
         self._pwm =  PWM(addr, debug=False)
         self._pwm.set_pwm_freq(self._frequency)
+    
+    def __del__(self):
+        self.stop_all()
 
     def set_pin(self, pin, value):
         if (pin < 0) or (pin > 15):
@@ -254,7 +260,11 @@ class AdafruitMotorHAT:
             raise NameError('MotorHAT Motor must be between 1 and 4 inclusive')
         return self.motors[num-1]
 
-
+    def stop_all(self):
+        for i in xrange(1,5):
+            self.get_motor(i).run(AdafruitMotorHAT.RELEASE)
+        for i in xrange(1,3):
+            self.get_stepper(i).step(0, self.FORWARD, self.DOUBLE)
 
 if __name__ == '__main__':
     import sys
