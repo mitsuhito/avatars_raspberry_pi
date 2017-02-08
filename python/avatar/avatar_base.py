@@ -18,7 +18,7 @@ from datetime import datetime
 from pprint import pprint
 import traceback
 import netifaces
-
+import copy
 #import liblo
 import RPi.GPIO as GPIO
 
@@ -73,7 +73,7 @@ class AvatarBase(object):
         self._init_outputs(self._config['outputs'], self._config['actuation_map'])
 
         self._mainloop_update_rate_hz = 50
-        self._watchdog_timer_update_rate_hz = 200
+        self._watchdog_timer_update_rate_hz = 300
 
         self._topic_filter = ''
         if net_iface_name is not None:
@@ -84,6 +84,8 @@ class AvatarBase(object):
         self._init_pingers(self._config['zmq']['heartbeat']['dst'], interval_hz=self._config['zmq']['heartbeat']['update_interval_hz'])
         self._init_zmq_subscribers(self._config['zmq']['teleop']['src'])
         self._is_running = False
+
+        self._current_job_forced_exec = False
 
     def __del__(self):
         print __name__, '__del__()::', 'cleanup mess'
@@ -100,7 +102,7 @@ class AvatarBase(object):
         if len(hosts) > 0:
             for target in hosts:
                 p = Pinger(dest=target, timeout=5, interval_hz=interval_hz)
-                p.run()
+                p.run(self._topic_filter)
                 self._pingers.append(p)
         #print self._pingers
 
@@ -133,13 +135,13 @@ class AvatarBase(object):
             actuator = Actuator(outputs_conf[i], actuation_map)
             self._outputs.append(actuator)
 
-    def actuate(self, task=None):
-        print __name__, 'actuate()::', task
+    def actuate(self, task=None, forced_exec=False):
+        print __name__, 'actuate()::', task, ' forced_exec:', forced_exec
         if task is None:
             raise TypeError('task is empty. nothing to do!')
-        # ps = []
         actuation_threads = []
 
+        self._current_job_forced_exec = forced_exec
         if self._emergency_stop == True:
             return
 
@@ -147,20 +149,15 @@ class AvatarBase(object):
             sequence = ast.literal_eval(task[motor_id])
             actuator = self._outputs[motor_id]
             # actuator.actuate(sequence)
-            thread = threading.Thread(target=actuator.actuate, name="actuator_th_"+str(motor_id), args=(sequence,))
+            thread = threading.Thread(target=actuator.actuate, name="actuator_th_"+str(motor_id), args=(sequence, self._current_job_forced_exec))
             actuation_threads.append(thread)
-            # p = Process(target=actuator.actuate, args=(sequence, ))
-            # ps.append(p)
 
         for t in actuation_threads:
             t.start()
         for t in actuation_threads:
             t.join()
 
-        # for p in ps:
-        #     p.start()
-        # for p in ps:
-        #     p.join()
+        # self._current_job_forced_exec = None
 
     def start(self):
         print __name__, datetime.today(), 'start()::'
@@ -232,20 +229,36 @@ class AvatarBase(object):
             #avatar_base actuate():: {0: '%d, 300, 0, 0', 1: '%d, 300, 0, 0'}
             template = None
             if actuation_name in self._config['actuation_map']:
-                template = self._config['actuation_map'][actuation_name]
+                template = copy.deepcopy(self._config['actuation_map'][actuation_name])
             if template is None:
                 print 'there is no template'
                 return
+
+            forced_exec = False
+            print '////////////'
+            print template
+
+            if template.has_key('forced_exec'):
+                forced_exec = bool(template['forced_exec'])
+                print '-'
+                print forced_exec
+                print '-'
+                del template['forced_exec']
+                print template
+                print '-'
+
             for i in xrange(len(template)):
                 if template[i].count('%'):
                     template[i] = str(eval(template[i] % int(actuation_params))).strip('()')
-                    # template[i] = ','.join(eval(template[i] % int(actuation_params)))
-            print template
+
+            print '-----------', template, forced_exec
             if template is not None:
                 try:
-                    self.actuate(template)
+                    if forced_exec:
+                        self.emergency_stop(False)
+                    self.actuate(template, forced_exec)
                 except Exception:
-                    self.actuate.stop()
+                    self.emergency_stop(True)
                     traceback.print_exc()
 
     # @abstractmethod
@@ -260,9 +273,10 @@ class AvatarBase(object):
         for sensor in self._inputs:
             if isinstance(sensor.driver, MaxSonar):
                 threshold = sensor.config['params']['emergency_stop_threshold_mm']
-                # print sensor.driver.get_distance_raw_mm(), threshold
+                #print sensor.driver.get_distance_raw_mm(), '_current_job_forced_exec::', self._current_job_forced_exec
                 if sensor.driver.get_distance_raw_mm() < threshold:
-                    self.emergency_stop(True)
+                    if self._current_job_forced_exec == False:
+                        self.emergency_stop(True)
                 else:
                     self.emergency_stop(False)
         # print self._emergency_stop
@@ -272,9 +286,10 @@ class AvatarBase(object):
 
     def emergency_stop(self, state):
         self._emergency_stop = state
+        # print __name__, 'emergency_stop()::', self._current_job_forced_exec, self._emergency_stop
         for pinger in self._pingers:
             if self._emergency_stop == True:
-                pinger.status = 'emergency stopped'
+                pinger.status = 'emergency_stopped'
             else:
                 pinger.status = 'running'
 

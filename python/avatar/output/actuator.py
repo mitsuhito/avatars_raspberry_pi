@@ -146,17 +146,17 @@ class Actuator(object):
             current_driver = GPIO.setup(pin, GPIO.OUT)
         return current_driver
 
-    def _actuate_dc_adafruit_motor_hat(self, motor_id=None, actuation_sequence=None):
+    def _actuate_dc_adafruit_motor_hat(self, motor_id=None, actuation_sequence=None, forced_exec=False):
         if actuation_sequence is None or motor_id is None:
             return
         speed_max = self.config['params']['speed']['max']
-        # print self.emergency_stop, motor_id, actuation_sequence
+        # print __name__, self.emergency_stop, motor_id, actuation_sequence, forced_exec
         # speed, wait_ms, ...
         for i in xrange(0, len(actuation_sequence), 2):
             speed = actuation_sequence[i]
             wait_ms = actuation_sequence[i+1]
             dc_motor = self.driver.get_motor(motor_id)
-            if self.emergency_stop == True:
+            if forced_exec == False and self.emergency_stop == True:
                 dc_motor.set_speed(0)
                 #
                 # TODO: define output status data structure for pinger
@@ -177,7 +177,7 @@ class Actuator(object):
             self.status = speed
             time.sleep(wait_ms/1000.)
 
-    def _actuate_stepper_adafruit_motor_hat(self, motor_id=None, actuation_sequence=None):
+    def _actuate_stepper_adafruit_motor_hat(self, motor_id=None, actuation_sequence=None, forced_exec=False):
         if actuation_sequence is None or motor_id is None:
             return
 
@@ -199,7 +199,7 @@ class Actuator(object):
             wait_ms = actuation_sequence[i+2]
 
             stepper_motor = self.driver.get_stepper(motor_spec_steps, motor_id)
-            if self.emergency_stop == True:
+            if forced_exec == False and self.emergency_stop == True:
                 stepper_motor.set_speed(0)
                 return
 
@@ -212,7 +212,7 @@ class Actuator(object):
             time.sleep(wait_ms/1000.)
 
 
-    def _actuate_servo_adafruit_motor_hat(self, motor_id=None, actuation_sequence=None):
+    def _actuate_servo_adafruit_motor_hat(self, motor_id=None, actuation_sequence=None, forced_exec=False):
         if actuation_sequence is None or motor_id is None:
             return
         #
@@ -220,13 +220,13 @@ class Actuator(object):
         #
         return
 
-    def _actuate_arduino_motor_hat(self, params=None):
+    def _actuate_arduino_motor_hat(self, params=None, forced_exec=False):
         #
         # TODO: finish implement
         #
         pass
 
-    def _actuate_gpio(self, pin=None, actuation_sequence=None):
+    def _actuate_gpio(self, pin=None, actuation_sequence=None, forced_exec=False):
         # TODO: finish implement
         # high_or_low, wait_ms
         #     driver:
@@ -244,12 +244,12 @@ class Actuator(object):
             wait_ms = actuation_sequence[i+1]
             gpio_driver = self.driver
 
-            if self.emergency_stop == True:
+            if forced_exec == False and self.emergency_stop == True:
                 break
             gpio_driver.output(pin, logic_state)
             time.sleep(wait_ms/1000.)
 
-    def actuate(self, sequence=None):
+    def actuate(self, sequence=None, forced_exec=False):
         if sequence is None:
             return
         # print __name__, 'actuate()::', sequence, self.driver
@@ -258,13 +258,13 @@ class Actuator(object):
             motor_id = self.config['pin']
             if self.config['type'] == 'dc':
                 # print 'calling _actuate_dc_adafruit_motor_hat()::', motor_id, sequence
-                self._actuate_dc_adafruit_motor_hat(motor_id, sequence)
+                self._actuate_dc_adafruit_motor_hat(motor_id, sequence, forced_exec)
 
             elif self.config['type'] == 'stepper':
-                self._actuate_stepper_adafruit_motor_hat(motor_id, sequence)
+                self._actuate_stepper_adafruit_motor_hat(motor_id, sequence, forced_exec)
 
             elif self.config['type'] == 'servo':
-                #self._actuate_servo_adafruit_motor_hat(motor_id, sequence)
+                #self._actuate_servo_adafruit_motor_hat(motor_id, sequence, forced_exec)
                 pass
 
         elif isinstance(self.driver, ArduinoMotorDriver):
@@ -274,7 +274,7 @@ class Actuator(object):
 
         elif self.driver == GPIO:
             gpio_pin = self.config['pin']
-            self._actuate_gpio(gpio_pin, sequence)
+            self._actuate_gpio(gpio_pin, sequence, forced_exec)
 
     def set_emergency_stop(self, state):
         # if bool(self.config['is_safe']) == False:
@@ -285,4 +285,4 @@ class Actuator(object):
 
     def stop(self):
         # print self.config
-        self.actuate(self.actuation_map['STOP'])
+        self.actuate(self.actuation_map['STOP'], forced_exec=False)

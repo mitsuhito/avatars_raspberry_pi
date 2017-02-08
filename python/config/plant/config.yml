@@ -1,0 +1,85 @@
+#
+# configraiton for avatar instance
+#
+
+instance_name: 'plant'
+
+zmq:
+  heartbeat:
+    update_interval_hz: 100
+    dst:
+      - 'tcp://10.110.40.200:5001'
+  teleop:
+    src:
+      - 'tcp://10.110.40.200:5000'
+      # - 'tcp://10.100.10.82:5000'
+      # - 'ipc:///tmp/avatar/teleop'
+
+inputs:
+  0:
+    name: 'max_sonar_tty'
+    connection: 'serial'
+    address: '/dev/ttyS0'
+    params:
+      emergency_stop_threshold_mm: 800
+      sampling_rate_hz: 20
+
+outputs:
+  0:
+    driver:
+      type: 'adafruit_motor_hat'
+      connection: 'i2c'
+      address: 0x60
+    name: 'left wheel'
+    pin: 1
+    type: 'dc'
+    params:
+      speed:
+        max: 255
+  1:
+    driver:
+      type: 'adafruit_motor_hat'
+      connection: 'i2c'
+      address: 0x60
+    name: 'right wheel'
+    pin: 3
+    type: 'dc'
+    params:
+      speed:
+        max: 255
+
+actuation_map:
+  # YAML format
+  # 'FUNCTION_NAME':
+  #   OUTPUT_INDEX: 'params, wait_ms, ...'
+  FORWARD:
+      # 0: '%d, 500, 0, 0' # pause every time
+      # 1: '%d, 500, 0, 0' # pause every time
+      0: '%d, 0'
+      1: '%d, 0'
+      forced_exec: False
+
+  BACK:
+      # jsut for debug
+      0: '-1*%d, 500, 0, 0' # pause every time
+      1: '-1*%d, 500, 0, 0' # pause every time
+      forced_exec: False
+
+  LEFT:
+      # 0: '-1*%d, 500, 0, 0' # pause every time
+      # 1: '%d, 500, 0, 0' # pause every time
+      0: '-1*%d, 0'
+      1: '%d, 0'
+      forced_exec: True
+
+  RIGHT:
+      # 0: '%d, 500, 0, 0' # pause every time
+      # 1: '-1*%d, 500, 0, 0' # pause every time
+      0: '%d, 0'
+      1: '-1*%d, 0'
+      forced_exec: True
+
+  STOP:
+      0: '0, 0'
+      1: '0, 0'
+      forced_exec: True
