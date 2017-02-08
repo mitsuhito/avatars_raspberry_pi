@@ -15,6 +15,7 @@ import signal
 from threading import Timer
 from datetime import datetime
 from pprint import pprint
+import traceback
 
 #import liblo
 import RPi.GPIO as GPIO
@@ -32,17 +33,27 @@ from avatar_base import AvatarBase
 
 
 class Avatar(AvatarBase):
-    def __init__(self, config=None):
-        super(Avatar, self).__init__(config)
+    def __init__(self, config=None, net_iface_name=None):
+        super(Avatar, self).__init__(config, net_iface_name)
 
     def _zmq_teleop_stream_handler(self, msg):
         super(Avatar, self)._zmq_teleop_stream_handler(msg)
+        print __name__, '_zmq_teleop_stream_handler()::', msg
+        filtered_msg = msg
         if self._topic_filter == '': # jsut for debug
-            msg = msg[1:]
-        function_name = msg[0]
-        params = (msg[1])
+            filtered_msg = filtered_msg[1:]
+
+        print 'after topic_filter', filtered_msg
+        if len(filtered_msg) < 2:
+            print 'corrupted msg', filtered_msg
+            # why not wokr?
+            return
+        else:
+            function_name = filtered_msg[0]
+            function_params = (filtered_msg[1])
+            print function_name, function_params
         if function_name == 'DISPLAY':
-            print params
+            print function_params
             #
             # TODO : project text
             #
@@ -60,35 +71,23 @@ class Avatar(AvatarBase):
                 #print 'gpio #', sensor, GPIO.input(sensor)
                 pass
 
-        time.sleep(10)
-        print 'warning! warning!'
-        # forward = {0: '200, 1500, 0, 0', 1: '200, 1500, 0, 0'}
-        # self.actuate(forward)
-        back = {0: '-200, 1500, 0, 0', 1: '-200, 1500, 0, 0'}
-        self.actuate(back)
-        left = {0: '200, 1500, 0, 0', 1: '-200, 1500, 0, 0'}
-        self.actuate(left)
-        right = {0: '-200, 1500, 0, 0', 1: '200, 1500, 0, 0'}
-        self.actuate(right)
-
-        # self._mainloop_update_timer = Timer(1./self._mainloop_update_rate_hz, self._update)
-        # self._mainloop_update_timer.start()
+        self._mainloop_update_timer = Timer(1./self._mainloop_update_rate_hz, self._update)
+        self._mainloop_update_timer.start()
 
 if __name__ == '__main__':
     print sys.argv[0], ' __main__'
-    config_file = open('config/projector/config.yml', 'r')
+    config_file = open(sys.argv[1], 'r')
     config_yml = yaml.load(config_file)
     config_file.close()
 
     name = config_yml['instance_name']
     print name
-    projector = Avatar(config_yml)
 
-    # forward = {0: '200, 500, 0, 0', 1: '200, 500, 0, 0'}
-    # # projector.actuate(forward)
-    #
-    # timer = Timer(30, projector.actuate, forward)
-    # timer.start()
-    projector.start()
-    print '\n\n\n\n hello!'
-    time.sleep(30)
+    projector = Avatar(config_yml, 'wlan0')
+    try:
+        signal.signal(signal.SIGTERM, projector.stop)
+        projector.start()
+    except:
+        'something wrong.. '
+        traceback.print_exc()
+        projector.stop()

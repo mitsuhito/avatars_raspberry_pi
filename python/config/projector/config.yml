@@ -21,24 +21,24 @@ inputs:
     connection: 'serial'
     address: '/dev/ttyS0'
     params:
-      emergency_stop_threshold_mm: 500
+      emergency_stop_threshold_mm: 300
       sampling_rate_hz: 20
-  1:
-    name: 'limit_sw_1'
-    connection: 'gpio'
-    address: 17
-    params: ~
-  2:
-    name: 'limit_sw_2'
-    connection: 'gpio'
-    address: 18
-    params: ~
-  3:
-    name: 'telephone_receiver_sw'
-    connection: 'gpio'
-    address: 5
-    params:
-      mode: 'pullup'
+  # 1:
+  #   name: 'limit_sw_1'
+  #   connection: 'gpio'
+  #   address: 17
+  #   params: ~
+  # 2:
+  #   name: 'limit_sw_2'
+  #   connection: 'gpio'
+  #   address: 18
+  #   params: ~
+  # 3:
+  #   name: 'telephone_receiver_sw'
+  #   connection: 'gpio'
+  #   address: 5
+  #   params:
+  #     mode: 'pullup'
 
 outputs:
   0:
@@ -53,7 +53,6 @@ outputs:
       speed:
         max: 255
     is_safe: false
-
   1:
     driver:
       type: 'adafruit_motor_hat'
@@ -66,92 +65,89 @@ outputs:
       speed:
         max: 255
     is_safe: false
-
-  2:
-    driver:
-      type: 'arduino_custom_motor_hat'
-      connection: 'i2c'
-      address: 0x61
-    name: 'stepper 1'
-    pin: 1
-    type: 'stepper'
-    params:
-      steps: 200
-      speed_rpm:
-        max: 255
-    is_safe: false
-
-  3:
-    driver:
-      type: 'arduino_custom_motor_hat'
-      connection: 'i2c'
-      address: 0x61
-    name: 'stepper 2'
-    pin: 2
-    type: 'stepper'
-    params:
-      steps: 200
-      speed_rpm:
-        max: 255
-        min: 0
-    is_safe: false
-
-  4:
-    driver:
-      type: 'direct'
-      connection: 'gpio'
-      address: ~
-    name: 'bell'
-    pin: 16
-    type: ~
-    params: ~
-    is_safe: true
-
-  5:
-    driver:
-      type: 'direct'
-      connection: 'gpio'
-      address: ~
-    name: 'blower'
-    pin: 13
-    type: ~
-    params: ~
-    is_safe: true
+  # 2:
+  #   driver:
+  #     type: 'arduino_custom_motor_hat'
+  #     connection: 'i2c'
+  #     address: 0x61
+  #   name: 'stepper 1'
+  #   pin: 1
+  #   type: 'stepper'
+  #   params:
+  #     steps: 200
+  #     speed_rpm:
+  #       max: 255
+  #   is_safe: false
+  #
+  # 3:
+  #   driver:
+  #     type: 'arduino_custom_motor_hat'
+  #     connection: 'i2c'
+  #     address: 0x61
+  #   name: 'stepper 2'
+  #   pin: 2
+  #   type: 'stepper'
+  #   params:
+  #     steps: 200
+  #     speed_rpm:
+  #       max: 255
+  #       min: 0
+  #   is_safe: false
+  #
+  # 4:
+  #   driver:
+  #     type: 'direct'
+  #     connection: 'gpio'
+  #     address: ~
+  #   name: 'bell'
+  #   pin: 16
+  #   type: ~
+  #   params: ~
+  #   is_safe: true
+  #
+  # 5:
+  #   driver:
+  #     type: 'direct'
+  #     connection: 'gpio'
+  #     address: ~
+  #   name: 'blower'
+  #   pin: 13
+  #   type: ~
+  #   params: ~
+  #   is_safe: true
 
 actuation_map:
   # YAML format
   # 'FUNCTION_NAME':
-  #   OUTPUT_INDEX: 'param:wait_ms param:wait_ms param:wait_ms ...'
+  #   OUTPUT_INDEX: 'params, wait_ms, ...'
   FORWARD:
-      # 0: '255, 0'
-      # 1: '255, 0'
-      0: '%d, 300, 0, 0' # stop every time
-      1: '%d, 300, 0, 0' # stop every time
+      # 0: '%d, 500, 0, 0' # pause every time
+      # 1: '%d, 500, 0, 0' # pause every time
+      0: '%d, 0'
+      1: '%d, 0'
   BACK:
       # jsut for debug
-      0: '-1*%d, 300, 0, 0'
-      1: '-1*%d, 300, 0, 0'
+      0: '-1*%d, 500, 0, 0' # pause every time
+      1: '-1*%d, 500, 0, 0' # pause every time
   LEFT:
-      0: '-1*%d, 300, 0, 0'
-      1: '%d, 300, 0, 0'
-      # 0: '-100, 0'
-      # 1: '100, 0'
+      # 0: '-1*%d, 500, 0, 0' # pause every time
+      # 1: '%d, 500, 0, 0' # pause every time
+      0: '-1*%d, 0'
+      1: '%d, 0'
   RIGHT:
-      0: '%d, 300, 0, 0'
-      1: '-1*%d, 300, 0, 0'
-      # 0: '100, 0'
-      # 1: '-100, 0'
+      # 0: '%d, 500, 0, 0' # pause every time
+      # 1: '-1*%d, 500, 0, 0' # pause every time
+      0: '%d, 0'
+      1: '-1*%d, 0'
   STOP:
       0: '0, 0'
       1: '0, 0'
-      2: '0, 0'
-      3: '0, 0'
-
-
-  RING_BELL:
-      4: '255, 100, 0, 100, 255, 100, 0, 100, 255, 100, 0, 100, 255, 100, 0, 100, 255, 100, 0, 100'
-
-  BLOWER_ON:
-      5: '255, 50'
-  BLOWER_OFF:
-      5: '0, 50'
+      # 2: '0, 0'
+      # 3: '0, 0'
+  # RING_BELL:
+  #     4: '255, 100, 0, 100, 255, 100, 0, 100, 255, 100, 0, 100, 255, 100, 0, 100, 255, 100, 0, 100'
+  #
+  # BLOWER_ON:
+  #     5: '255, 50'
+  # BLOWER_OFF:
+  #     5: '0, 50'

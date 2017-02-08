@@ -107,12 +107,13 @@ from driver.adafruit_pwm_servo_driver import PWM
 #       mode: 'SINGLE'
 
 class Actuator(object):
-    def __init__(self, config=None):
+    def __init__(self, config=None, actuation_map=None):
         self.config = config
         self.driver = self._init_driver(config)
         self.emergency_stop = False
+        self.actuation_map = actuation_map
 
-        print 'Actuator::', self.driver
+        # print 'Actuator::', self.driver
         #
         # TODO: define output status data structure for pinger
         #
@@ -148,9 +149,8 @@ class Actuator(object):
     def _actuate_dc_adafruit_motor_hat(self, motor_id=None, actuation_sequence=None):
         if actuation_sequence is None or motor_id is None:
             return
-
         speed_max = self.config['params']['speed']['max']
-
+        # print self.emergency_stop, motor_id, actuation_sequence
         # speed, wait_ms, ...
         for i in xrange(0, len(actuation_sequence), 2):
             speed = actuation_sequence[i]
@@ -163,7 +163,7 @@ class Actuator(object):
                 #
                 self.status = 0
                 dc_motor.run(AdafruitMotorHAT.RELEASE)
-                break
+                return
             dc_motor.set_speed(abs(max(speed, speed_max)))
             if speed > 0:
                 dc_motor.run(AdafruitMotorHAT.FORWARD)
@@ -201,7 +201,7 @@ class Actuator(object):
             stepper_motor = self.driver.get_stepper(motor_spec_steps, motor_id)
             if self.emergency_stop == True:
                 stepper_motor.set_speed(0)
-                break
+                return
 
             stepper_motor.set_speed(abs(max(speed_rpm, speed_max)))
 
@@ -252,13 +252,12 @@ class Actuator(object):
     def actuate(self, sequence=None):
         if sequence is None:
             return
-
-        print __name__, 'actuate()::', sequence, self.driver
+        # print __name__, 'actuate()::', sequence, self.driver
 
         if isinstance(self.driver, AdafruitMotorHAT):
             motor_id = self.config['pin']
             if self.config['type'] == 'dc':
-                print 'calling _actuate_dc_adafruit_motor_hat()::', motor_id, sequence
+                # print 'calling _actuate_dc_adafruit_motor_hat()::', motor_id, sequence
                 self._actuate_dc_adafruit_motor_hat(motor_id, sequence)
 
             elif self.config['type'] == 'stepper':
@@ -278,10 +277,12 @@ class Actuator(object):
             self._actuate_gpio(gpio_pin, sequence)
 
     def set_emergency_stop(self, state):
-        if bool(self.config['is_safe']) == False:
-            emergency_stop = True
+        # if bool(self.config['is_safe']) == False:
+        self.emergency_stop = state
+        # print __name__, 'set_emergency_stop()::', state
+        if self.emergency_stop == True:
             self.stop()
 
     def stop(self):
-        print 'stop!'
-        self.actuate(self.config['actuation_map']['STOP'])
+        # print self.config
+        self.actuate(self.actuation_map['STOP'])

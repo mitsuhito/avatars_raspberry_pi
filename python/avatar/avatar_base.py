@@ -16,6 +16,8 @@ from threading import Timer
 import threading
 from datetime import datetime
 from pprint import pprint
+import traceback
+import netifaces
 
 #import liblo
 import RPi.GPIO as GPIO
@@ -51,8 +53,8 @@ class AvatarBase(object):
             class__.__instance = object.__new__(class__)
         return class__.__instance
 
-    def __init__(self, config=None):
-        signal.signal(signal.SIGTERM, self.__del__)
+    def __init__(self, config=None, net_iface_name=None):
+        # signal.signal(signal.SIGTERM, self.__del__)
         self._emergency_stop = False
 
         if config is None:
@@ -68,20 +70,20 @@ class AvatarBase(object):
         self._pingers = []
 
         self._init_inputs(self._config['inputs'])
-        self._init_outputs(self._config['outputs'])
+        self._init_outputs(self._config['outputs'], self._config['actuation_map'])
 
-        #
-        # TODO : use iface neame
-        #
+        self._mainloop_update_rate_hz = 50
+        self._watchdog_timer_update_rate_hz = 200
+
         self._topic_filter = ''
+        if net_iface_name is not None:
+            self._netif_name = net_iface_name
+            self._topic_filter = netifaces.ifaddresses(self._netif_name)[2][0]['addr']
 
         self.ioloop = IOLoop.instance()
         self._init_pingers(self._config['zmq']['heartbeat']['dst'], interval_hz=self._config['zmq']['heartbeat']['update_interval_hz'])
         self._init_zmq_subscribers(self._config['zmq']['teleop']['src'])
-
         self._is_running = False
-        self._mainloop_update_rate_hz = 50
-        self.__watchdog_timer_update_rate_hz = 200
 
     def __del__(self):
         print __name__, '__del__()::', 'cleanup mess'
@@ -90,13 +92,14 @@ class AvatarBase(object):
         del self._outputs[:]
         del self._pingers[:]
         self._is_running = False
+        self.emergency_stop(True)
         GPIO.cleanup()
         self.ioloop.instance().stop()
 
     def _init_pingers(self, hosts=[], interval_hz=100):
         if len(hosts) > 0:
             for target in hosts:
-                p = Pinger(dest=target, interval_hz=interval_hz)
+                p = Pinger(dest=target, timeout=5, interval_hz=interval_hz)
                 p.run()
                 self._pingers.append(p)
         #print self._pingers
@@ -121,13 +124,13 @@ class AvatarBase(object):
             sensor = Sensor(inputs_conf[i])
             self._inputs.append(sensor)
 
-    def _init_outputs(self, outputs_conf=None):
-        if outputs_conf is None:
+    def _init_outputs(self, outputs_conf=None, actuation_map=None):
+        if outputs_conf is None or actuation_map is None:
             return
         #print len(outputs_conf)
         self._outputs = []
         for i in xrange(len(outputs_conf)):
-            actuator = Actuator(outputs_conf[i])
+            actuator = Actuator(outputs_conf[i], actuation_map)
             self._outputs.append(actuator)
 
     def actuate(self, task=None):
@@ -164,7 +167,7 @@ class AvatarBase(object):
         self._is_running = True
         self._emergency_stop = False
 
-        self._watchdog_timer =  Timer(1./self.__watchdog_timer_update_rate_hz, self._watchdog)
+        self._watchdog_timer =  Timer(1./self._watchdog_timer_update_rate_hz, self._watchdog)
         self._watchdog_timer.start()
 
         self._mainloop_update_timer = Timer(1./self._mainloop_update_rate_hz, self._update)
@@ -181,7 +184,7 @@ class AvatarBase(object):
     def stop(self):
         print __name__, datetime.today(), 'stop()::'
         self._is_running = False
-        self._emergency_stop = True
+        self.emergency_stop(True)
         self._mainloop_update_timer.cancel()
         self._pingers_in_timer.cancel()
         self._pingers_out_timer.cancel()
@@ -208,18 +211,42 @@ class AvatarBase(object):
         self._pingers_out_timer.start()
 
     def _zmq_teleop_stream_handler(self, msg):
-        print __name__, '_zmq_teleop_stream_handler()::', msg
-        if self._topic_filter == '': # jsut for debug
-            msg = msg[1:]
-        actuation_name = msg[0]
-        actuation_params = (msg[1])
-        # replace parameters from given message
-        actuation_sequence = eval((self._config['actuation_map'][actuation_name]) % actuation_params)
-        # str = '-1*%d' % 54
+        print __name__, '_zmq_teleop_stream_handler()::', msg, self._topic_filter
+        filtered_msg = msg
 
-        print 'actuation_sequence: ', actuation_sequence
-        if actuation_sequence is not None:
-            self.actuate(actuation_sequence)
+        #
+        # TODO: check why not working topic filter
+        #
+        if self._topic_filter == msg[0]:
+            filtered_msg = filtered_msg[1:]
+
+        print 'after topic_filter', filtered_msg
+        if len(filtered_msg) < 2:
+            print 'corrupted msg', filtered_msg
+            # why not wokr?
+            return
+        else:
+            actuation_name = filtered_msg[0]
+            actuation_params = (filtered_msg[1])
+            # replace parameters from given message
+            #avatar_base actuate():: {0: '%d, 300, 0, 0', 1: '%d, 300, 0, 0'}
+            template = None
+            if actuation_name in self._config['actuation_map']:
+                template = self._config['actuation_map'][actuation_name]
+            if template is None:
+                print 'there is no template'
+                return
+            for i in xrange(len(template)):
+                if template[i].count('%'):
+                    template[i] = str(eval(template[i] % int(actuation_params))).strip('()')
+                    # template[i] = ','.join(eval(template[i] % int(actuation_params)))
+            print template
+            if template is not None:
+                try:
+                    self.actuate(template)
+                except Exception:
+                    self.actuate.stop()
+                    traceback.print_exc()
 
     # @abstractmethod
     # def _gpio_event_handler(self):
@@ -231,13 +258,15 @@ class AvatarBase(object):
 
     def _watchdog(self):
         for sensor in self._inputs:
-            if isinstance(sensor, MaxSonar):
-                if sensor.get_distance_raw_mm() < sensor.config['params']['emergency_stop_threshold_mm']:
+            if isinstance(sensor.driver, MaxSonar):
+                threshold = sensor.config['params']['emergency_stop_threshold_mm']
+                # print sensor.driver.get_distance_raw_mm(), threshold
+                if sensor.driver.get_distance_raw_mm() < threshold:
                     self.emergency_stop(True)
                 else:
                     self.emergency_stop(False)
-                break
-        self._watchdog_timer =  Timer(1./self.__watchdog_timer_update_rate_hz, self._watchdog)
+        # print self._emergency_stop
+        self._watchdog_timer =  Timer(1./self._watchdog_timer_update_rate_hz, self._watchdog)
         self._watchdog_timer.start()
 
 
@@ -249,9 +278,8 @@ class AvatarBase(object):
             else:
                 pinger.status = 'running'
 
-        if self._emergency_stop == True:
-            for actuator in self._outputs:
-                actuator.set_emergency_stop(True)
+        for actuator in self._outputs:
+            actuator.set_emergency_stop(self._emergency_stop)
 
     @abstractmethod
     def _update(self):
