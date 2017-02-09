@@ -72,7 +72,7 @@ class AvatarBase(object):
         self._init_inputs(self._config['inputs'])
         self._init_outputs(self._config['outputs'], self._config['actuation_map'])
 
-        self._mainloop_update_rate_hz = 50
+        self._mainloop_update_rate_hz = 120
         self._watchdog_timer_update_rate_hz = 300
 
         self._topic_filter = ''
@@ -104,7 +104,6 @@ class AvatarBase(object):
                 p = Pinger(dest=target, timeout=5, interval_hz=interval_hz)
                 p.run(self._topic_filter)
                 self._pingers.append(p)
-        #print self._pingers
 
     def _init_zmq_subscribers(self, hosts=[]):
         self._zmq_ctx = zmq.Context()
@@ -120,7 +119,6 @@ class AvatarBase(object):
     def _init_inputs(self, inputs_conf=None):
         if inputs_conf is None:
             return
-        #print len(inputs_conf)
         self._inputs = []
         for i in xrange(len(inputs_conf)):
             sensor = Sensor(inputs_conf[i])
@@ -129,7 +127,6 @@ class AvatarBase(object):
     def _init_outputs(self, outputs_conf=None, actuation_map=None):
         if outputs_conf is None or actuation_map is None:
             return
-        #print len(outputs_conf)
         self._outputs = []
         for i in xrange(len(outputs_conf)):
             actuator = Actuator(outputs_conf[i], actuation_map)
@@ -148,7 +145,6 @@ class AvatarBase(object):
         for motor_id in xrange(len(task)):
             sequence = ast.literal_eval(task[motor_id])
             actuator = self._outputs[motor_id]
-            # actuator.actuate(sequence)
             thread = threading.Thread(target=actuator.actuate, name="actuator_th_"+str(motor_id), args=(sequence, self._current_job_forced_exec))
             actuation_threads.append(thread)
 
@@ -157,12 +153,11 @@ class AvatarBase(object):
         for t in actuation_threads:
             t.join()
 
-        # self._current_job_forced_exec = None
-
     def start(self):
         print __name__, datetime.today(), 'start()::'
         self._is_running = True
-        self._emergency_stop = False
+        self._current_job_forced_exec = False
+        self.emergency_stop(False)
 
         self._watchdog_timer =  Timer(1./self._watchdog_timer_update_rate_hz, self._watchdog)
         self._watchdog_timer.start()
@@ -207,68 +202,6 @@ class AvatarBase(object):
         self._pingers_out_timer =  Timer(1./self._mainloop_update_rate_hz, self.__update_pingers_output_values)
         self._pingers_out_timer.start()
 
-    def _zmq_teleop_stream_handler(self, msg):
-        print __name__, '_zmq_teleop_stream_handler()::', msg, self._topic_filter
-        filtered_msg = msg
-
-        #
-        # TODO: check why not working topic filter
-        #
-        if self._topic_filter == msg[0]:
-            filtered_msg = filtered_msg[1:]
-
-        print 'after topic_filter', filtered_msg
-        if len(filtered_msg) < 2:
-            print 'corrupted msg', filtered_msg
-            # why not wokr?
-            return
-        else:
-            actuation_name = filtered_msg[0]
-            actuation_params = (filtered_msg[1])
-            # replace parameters from given message
-            #avatar_base actuate():: {0: '%d, 300, 0, 0', 1: '%d, 300, 0, 0'}
-            template = None
-            if actuation_name in self._config['actuation_map']:
-                template = copy.deepcopy(self._config['actuation_map'][actuation_name])
-            if template is None:
-                print 'there is no template'
-                return
-
-            forced_exec = False
-            print '////////////'
-            print template
-
-            if template.has_key('forced_exec'):
-                forced_exec = bool(template['forced_exec'])
-                print '-'
-                print forced_exec
-                print '-'
-                del template['forced_exec']
-                print template
-                print '-'
-
-            for i in xrange(len(template)):
-                if template[i].count('%'):
-                    template[i] = str(eval(template[i] % int(actuation_params))).strip('()')
-
-            print '-----------', template, forced_exec
-            if template is not None:
-                try:
-                    if forced_exec:
-                        self.emergency_stop(False)
-                    self.actuate(template, forced_exec)
-                except Exception:
-                    self.emergency_stop(True)
-                    traceback.print_exc()
-
-    # @abstractmethod
-    # def _gpio_event_handler(self):
-    #     pass
-    #
-    # #@abstractmethod
-    # def _max_sonar_event_hander(self):
-    #     pass
-
     def _watchdog(self):
         for sensor in self._inputs:
             if isinstance(sensor.driver, MaxSonar):
@@ -295,6 +228,55 @@ class AvatarBase(object):
 
         for actuator in self._outputs:
             actuator.set_emergency_stop(self._emergency_stop)
+
+    @abstractmethod
+    def _zmq_teleop_stream_handler(self, msg):
+        print __name__, '_zmq_teleop_stream_handler()::', msg, self._topic_filter
+
+        #
+        # TODO: check why not working topic filter.
+        #
+        filtered_msg = msg
+        if self._topic_filter == msg[0]:
+            # remove own ip from list
+            filtered_msg = filtered_msg[1:]
+
+        if len(filtered_msg) < 2:
+            print 'corrupted msg', filtered_msg
+            return
+
+        actuation_name = filtered_msg[0]
+        actuation_params = (filtered_msg[1])
+
+        if actuation_name == 'FUNCTION':
+            actuation_name = chr(actuation_params) # replace keycode to char
+
+        # replace parameters from given message
+        template = None
+        if actuation_name in self._config['actuation_map']:
+            template = copy.deepcopy(self._config['actuation_map'][actuation_name])
+        if template is None:
+            print 'there is no template'
+            return
+
+        forced_exec = False
+
+        if template.has_key('forced_exec'):
+            forced_exec = bool(template['forced_exec'])
+            del template['forced_exec']
+
+        for i in xrange(len(template)):
+            if template[i].count('%'):
+                template[i] = str(eval(template[i] % int(actuation_params))).strip('()')
+
+        if template is not None:
+            try:
+                if forced_exec:
+                    self.emergency_stop(False)
+                self.actuate(template, forced_exec)
+            except:
+                self.emergency_stop(True)
+                traceback.print_exc()
 
     @abstractmethod
     def _update(self):

@@ -17,6 +17,8 @@ from driver.adafruit_motorhat import AdafruitDCMotor
 from driver.adafruit_motorhat import AdafruitStepperMotor
 from driver.adafruit_pwm_servo_driver import PWM
 
+import threading
+
 # outputs:
 #   0:
 #     driver:
@@ -191,6 +193,7 @@ class Actuator(object):
         speed_max = self.config['params']['speed']['max']
         mode = self.config['params']['mode']
         step_style = getattr(AdafruitMotorHAT, mode)
+        print step_style, actuation_sequence
 
         # speed_rpm, steps, wait_ms, ...
         for i in xrange(0, len(actuation_sequence), 3):
@@ -286,3 +289,12 @@ class Actuator(object):
     def stop(self):
         # print self.config
         self.actuate(self.actuation_map['STOP'], forced_exec=False)
+
+    # def pause(self, state):
+    #     print 'pause()', state, self.driver
+    #     time.sleep(1)
+    #     if self.driver == AdafruitStepperMotor:
+    #         print self.driver
+    #         self.driver.lock.acquire()
+    #         self.driver.set_pause(state)
+    #         self.driver.lock.release()

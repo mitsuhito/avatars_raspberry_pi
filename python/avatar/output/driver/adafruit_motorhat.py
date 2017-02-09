@@ -2,6 +2,7 @@
 
 from adafruit_pwm_servo_driver import PWM
 import time
+import threading
 
 class AdafruitStepperMotor:
     MICROSTEPS = 8
@@ -18,6 +19,8 @@ class AdafruitStepperMotor:
         self.sec_per_step = 0.1
         self.steppingcounter = 0
         self.currentstep = 0
+        self._pause = False
+        self.lock = threading.Lock()
 
         num -= 1
 
@@ -44,6 +47,11 @@ class AdafruitStepperMotor:
 
     def one_step(self, dir, style):
         pwm_a = pwm_b = 255
+
+        # self.lock.acquire()
+        if self._pause:
+            # self.lock.release()
+            return
 
         # first determine what sort of stepping procedure we're up to
         if (style == AdafruitMotorHAT.SINGLE):
@@ -155,15 +163,27 @@ class AdafruitStepperMotor:
         print s_per_s, " sec per step"
 
         for s in range(steps):
-            lateststep = self.one_step(direction, stepstyle)
-            time.sleep(s_per_s)
+            if self._pause == False:
+                lateststep = self.one_step(direction, stepstyle)
+                time.sleep(s_per_s)
+            else:
+                return
 
         if (stepstyle == AdafruitMotorHAT.MICROSTEP):
             # this is an edge case, if we are in between full steps, lets just keep going
             # so we end on a full step
             while (lateststep != 0) and (lateststep != self.MICROSTEPS):
-                lateststep = self.one_step(dir, stepstyle)
-                time.sleep(s_per_s)
+                if self.pause == False:
+                    lateststep = self.one_step(dir, stepstyle)
+                    time.sleep(s_per_s)
+                else:
+                    return
+
+    def set_pause(self, state):
+        self.lock.acquire()
+        self._pause = state
+        self.lock.release()
+
 
 class AdafruitDCMotor:
     def __init__(self, controller, num):
@@ -215,7 +235,7 @@ class AdafruitDCMotor:
             speed = 0
         if (speed > 255):
             speed = 255
-        print __name__, speed
+        # print __name__, speed
         self.MC._pwm.set_pwm(self.pwm_pin, 0, speed*16)
 
 class AdafruitMotorHAT:

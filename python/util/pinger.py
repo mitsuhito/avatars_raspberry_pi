@@ -13,7 +13,7 @@ class Pinger(object):
     TODO
     - data format, etc
     """
-    def __init__(self, dest='tcp://10.110.40.200:5001', timeout=5, interval_hz=1):
+    def __init__(self, dest='tcp://10.110.40.200:5001', timeout=5, interval_hz=10):
         print __name__, '__init__()', dest, interval_hz
         self.dest = dest
         self.timeout = timeout
@@ -78,11 +78,9 @@ class Pinger(object):
 
         self.respond = time.time() - self.__lastrecv
 
-#        print "now | servertime -> {0} | {1}".format(
-#            time.time(), self.__respond_raw
-#        )
-#        print "response time -> {0}".format(self.respond)
-
+        # print "now | servertime -> {0} | {1}".format(time.time(), self.__respond_raw)
+        # print "response time -> {0}".format(self.respond)
+        # print self.interval_hz
         self.__timer = Timer(1./self.interval_hz, self.update)
         self.__timer.start()
 

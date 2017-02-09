@@ -17,6 +17,7 @@ from datetime import datetime
 from pprint import pprint
 import traceback
 
+import pygame
 #import liblo
 import RPi.GPIO as GPIO
 import yaml
@@ -27,7 +28,7 @@ import yaml
 # from driver.adafruit_motorhat import AdafruitStepperMotor
 # from driver.adafruit_pwm_servo_driver import PWM
 
-from avatar_base import AvatarBase
+from avatar.avatar_base import AvatarBase
 # from sensor.max_sonar_tty import MaxSonar
 # from util.pinger import Pinger
 
@@ -35,44 +36,85 @@ from avatar_base import AvatarBase
 class Avatar(AvatarBase):
     def __init__(self, config=None, net_iface_name=None):
         super(Avatar, self).__init__(config, net_iface_name)
+        self._screen = None;
+
+        #"Ininitializes a new pygame screen using the framebuffer"
+        # Based on "Python GUI in Linux frame buffer"
+        # http://www.karoltomala.com/blog/?p=679
+        disp_no = os.getenv("DISPLAY")
+        if disp_no:
+            print "I'm running under X display = {0}".format(disp_no)
+
+        # Check which frame buffer drivers are available
+        # Start with fbcon since directfb hangs with composite output
+        drivers = ['fbcon', 'directfb', 'svgalib']
+        found = False
+        for driver in drivers:
+            # Make sure that SDL_VIDEODRIVER is set
+            if not os.getenv('SDL_VIDEODRIVER'):
+                os.putenv('SDL_VIDEODRIVER', driver)
+            try:
+                pygame.display.init()
+            except pygame.error:
+                print 'Driver: {0} failed.'.format(driver)
+                continue
+            found = True
+            break
+
+        if not found:
+            raise Exception('No suitable video driver found!')
+
+        size = (pygame.display.Info().current_w, pygame.display.Info().current_h)
+        print "Framebuffer size: %d x %d" % (size[0], size[1])
+        self._screen = pygame.display.set_mode(size, pygame.FULLSCREEN)
+        # Clear the screen to start
+        self._screen.fill((0, 0, 0))
+
+        pygame.font.init()
+        self._sysfont = pygame.font.SysFont(None, 250)
+        self._display_text_msg = ''
+
+        # Render the screen
+        pygame.display.update()
 
     def _zmq_teleop_stream_handler(self, msg):
         super(Avatar, self)._zmq_teleop_stream_handler(msg)
-        print __name__, '_zmq_teleop_stream_handler()::', msg
-        filtered_msg = msg
-        if self._topic_filter == '': # jsut for debug
-            filtered_msg = filtered_msg[1:]
-
-        print 'after topic_filter', filtered_msg
-        if len(filtered_msg) < 2:
-            print 'corrupted msg', filtered_msg
-            # why not wokr?
-            return
-        else:
-            function_name = filtered_msg[0]
-            function_params = (filtered_msg[1])
-            print function_name, function_params
-        if function_name == 'DISPLAY':
-            print function_params
-            #
-            # TODO : project text
-            #
+        self._display_text_msg = ', '.join(msg)
+        #
+        # TODO: display something
+        #
+        if msg[1] == 'TEXT':
+            pass
 
     # generic update loop
     def _update(self):
-        # self._update_pingers()
-        #print datetime.today(),'_update()::'
         if self._is_running == False:
             return
-        for sensor in self._inputs:
-            #print sensor.read()
-            if sensor == GPIO:
-                # print sensor.read()
-                #print 'gpio #', sensor, GPIO.input(sensor)
-                pass
+        # super(Avatar, self)._update()
+
+        if self._screen is not None:
+            self._screen.fill((255,255,255))
+            disp_msg = str('i am '+self._instance_name)
+            disp_msg_for_render = self._sysfont.render(disp_msg, True, (255,0,0))
+            self._screen.blit(disp_msg_for_render, (10, 10))
+
+            font = pygame.font.SysFont(None, 150)
+
+            disp_msg = str('command history')
+            disp_msg_for_render = font.render(disp_msg, True, (255,0,0))
+            self._screen.blit(disp_msg_for_render, (10, 200))
+
+            disp_msg = str(self._display_text_msg)
+            disp_msg_for_render = font.render(disp_msg, True, (0,0,0))
+            self._screen.blit(disp_msg_for_render, (10, 400))
+
+            pygame.display.update()
 
         self._mainloop_update_timer = Timer(1./self._mainloop_update_rate_hz, self._update)
         self._mainloop_update_timer.start()
+
+
+
 
 if __name__ == '__main__':
     print sys.argv[0], ' __main__'
@@ -83,11 +125,11 @@ if __name__ == '__main__':
     name = config_yml['instance_name']
     print name
 
-    projector = Avatar(config_yml, 'wlan0')
+    avatar_instance = Avatar(config_yml, 'wlan0')
     try:
-        signal.signal(signal.SIGTERM, projector.stop)
-        projector.start()
+        signal.signal(signal.SIGTERM, avatar_instance.stop)
+        avatar_instance.start()
     except:
         'something wrong.. '
         traceback.print_exc()
-        projector.stop()
+        avatar_instance.stop()

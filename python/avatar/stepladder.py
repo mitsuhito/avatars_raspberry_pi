@@ -10,80 +10,118 @@ import random
 import logging
 import ast
 import signal
-from Queue import Queue
-from multiprocessing import Process
+# from Queue import Queue
+# from multiprocessing import Process
 from threading import Timer
+import threading
 from datetime import datetime
 from pprint import pprint
+import traceback
+import copy
 
 #import liblo
 import RPi.GPIO as GPIO
+import yaml
 
-from driver.arduino_motor_driver import ArduinoMotorDriver
-from driver.adafruit_motorhat import AdafruitMotorHAT
-from driver.adafruit_motorhat import AdafruitDCMotor
-from driver.adafruit_motorhat import AdafruitStepperMotor
-from driver.adafruit_pwm_servo_driver import PWM
+# from driver.arduino_motor_driver import ArduinoMotorDriver
+# from driver.adafruit_motorhat import AdafruitMotorHAT
+# from driver.adafruit_motorhat import AdafruitDCMotor
+# from driver.adafruit_motorhat import AdafruitStepperMotor
+# from driver.adafruit_pwm_servo_driver import PWM
+from avatar.output.actuator import Actuator
 
-from avatar_base import AvatarBase
-from sensor.max_sonar_tty import MaxSonar
-from util.pinger import Pinger
+from avatar.avatar_base import AvatarBase
+# from sensor.max_sonar_tty import MaxSonar
+# from util.pinger import Pinger
 
 class Avatar(AvatarBase):
-    def __init__(self, name=''):
-        super(Avatar, self).__init__(name)
-        self._task = self._config['actuation_map']['CW']
-    
-    def _gpio_event_handler(self, ch):
-        print '_gpio_event_handler()::', ch
-        
-        for i in xrange(len(self._config['inputs'])):
-            if ch == self._config['inputs'][i]['address']:
-                event_name = self._config['inputs'][i]['params']['event_actuation']
-                if event_name is None:
-                    return
-                self._task = self._config['actuation_map'][event_name]
-#                task = self._config['actuation_map'][event_name]
-#                self.actuate(task)
+    def __init__(self, config=None, net_iface_name=None):
+        super(Avatar, self).__init__(config, net_iface_name)
+
+        # set default task
+        self._task =  self._config['actuation_map']['CW']
+        self._pause = False
+        self._actuation_params = None
 
     def _zmq_teleop_stream_handler(self, msg):
-        print __name__, '_zmq_teleop_stream_handler()::', msg
-#        topic_name = msg[0]
-#        actuation_name = msg[1]
-        if self._task is not None:
-            self.actuate(self._task)
+        print msg, self._topic_filter
+        if len(msg) < 3:
+            return
 
-    # avatar unique instance runloop
-    def _runloop(self):
-        #print datetime.today(),'_update()::'
+        if not (msg[0] == self._topic_filter):
+            return
+
+        actuation_name = msg[1]
+        actuation_params = msg[2]
+
+        if actuation_name == 'STOP':
+            self._pause = True
+            #template = copy.deepcopy(self._config['actuation_map']['STOP'])
+        else:
+            self._actuation_params = actuation_params
+            self._pause = False
+
+    # generic update loop
+    def _update(self):
         if self._is_running == False:
             return
-        
-        # check sensor status
-        for sensor in self._inputs:
-            #print datetime.today(), sensor
-            if isinstance(sensor, MaxSonar):
-                dist_lpf_mm = sensor.get_distance_lpf_mm()
-                dist_raw_mm = sensor.get_distance_raw_mm()
-                
-                if dist_lpf_mm < 500:
-                    self._emergency_stop = True
-                    super(Avatar, self).actuate(self._config['actuation_map']['STOP'])
 
-                else:
-                    self._emergency_stop = False
-                #print 'dist_lpf_mm:', dist_lpf_mm, 'dist_raw_mm', dist_raw_mm
-                for p in self._pingers:
-                    p.in_values = [dist_lpf_mm]
-            if isinstance(sensor, int):
-                #if GPIO.event_detected(sensor):
-                #print 'gpio #', sensor, GPIO.input(sensor)
-                
+        template = copy.deepcopy(self._task)
 
-                pass
+        if self._pause == False and self._actuation_params is not None:
+            forced_exec = False
+            if template.has_key('forced_exec'):
+                forced_exec = bool(self._task['forced_exec'])
+                del template['forced_exec']
 
-        self._timer = Timer(1./self._update_rate_hz, self._runloop)
-        self._timer.start()
+            print template
+            for i in xrange(len(template)):
+                if template[i].count('%'):
+                    template[i] = str(eval(template[i] % int(self._actuation_params))).strip('()')
+
+            # print 'template', template
+            if template is not None:
+                try:
+                    if forced_exec:
+                        self.emergency_stop(False)
+                    self.actuate(template, forced_exec)
+
+                except:
+                    self.emergency_stop(True)
+                    traceback.print_exc()
+
+        for i in xrange(len(self._inputs)):
+            sensor = self._inputs[i]
+            result = sensor.read()
+            # print result, result[0] == GPIO
+            if (result[0] == GPIO):
+                pin_num = result[1]
+                pin_state = result[2]
+                # print pin_num, pin_state
+                if pin_state == 0:
+                    # swap current task
+                    if pin_num == 17:
+                        self._task = self._config['actuation_map']['CCW']
+                    if pin_num == 18:
+                        self._task = self._config['actuation_map']['CW']
+
+        self._mainloop_update_timer = Timer(1./self._mainloop_update_rate_hz, self._update)
+        self._mainloop_update_timer.start()
 
 if __name__ == '__main__':
     print sys.argv[0], ' __main__'
+    config_file = open(sys.argv[1], 'r')
+    config_yml = yaml.load(config_file)
+    config_file.close()
+
+    name = config_yml['instance_name']
+    print name
+
+    avatar_instance = Avatar(config_yml, 'wlan0')
+    try:
+        signal.signal(signal.SIGTERM, avatar_instance.stop)
+        avatar_instance.start()
+    except:
+        'something wrong.. '
+        traceback.print_exc()
+        avatar_instance.stop()
