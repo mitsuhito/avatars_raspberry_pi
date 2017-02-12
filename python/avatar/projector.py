@@ -22,6 +22,9 @@ import pygame
 import RPi.GPIO as GPIO
 import yaml
 
+import base64
+import StringIO
+
 # from driver.arduino_motor_driver import ArduinoMotorDriver
 # from driver.adafruit_motorhat import AdafruitMotorHAT
 # from driver.adafruit_motorhat import AdafruitDCMotor
@@ -37,6 +40,17 @@ class Avatar(AvatarBase):
     def __init__(self, config=None, net_iface_name=None):
         super(Avatar, self).__init__(config, net_iface_name)
         self._screen = None;
+
+        self._image_base64_encoded = ''
+        # self._jpg_img = None
+        self._jpg_tmp_file = None
+        self._pygame_img = None
+
+        # self._jpg_tmp_file = file('img_tmp.jpg', 'w')
+        # # self._jpg_tmp_file = StringIO.StringIO(base64.b64decode(self._image_base64_encoded))
+        # print self._jpg_tmp_file
+        # self._jpg_tmp_file .write(base64.b64decode(self._image_base64_encoded))
+        # self._jpg_img = base64.b64decode(self._image_base64_encoded)
 
         #"Ininitializes a new pygame screen using the framebuffer"
         # Based on "Python GUI in Linux frame buffer"
@@ -85,6 +99,15 @@ class Avatar(AvatarBase):
         #
         if msg[1] == 'TEXT':
             pass
+        elif msg[1] == 'IMG':
+            if self._jpg_tmp_file is not None:
+                self._jpg_tmp_file.close()
+            self._image_base64_encoded = msg[2]
+            self._jpg_tmp_file = file('./img_tmp.jpg', 'w')
+            self._jpg_tmp_file.write(base64.b64decode(self._image_base64_encoded))
+            self._jpg_tmp_file.close()
+            self._pygame_img = pygame.image.load('./img_tmp.jpg').convert()
+            # print 'self._pygame_img:::', self._pygame_img
 
     # generic update loop
     def _update(self):
@@ -94,20 +117,24 @@ class Avatar(AvatarBase):
 
         if self._screen is not None:
             self._screen.fill((255,255,255))
-            disp_msg = str('i am '+self._instance_name)
-            disp_msg_for_render = self._sysfont.render(disp_msg, True, (255,0,0))
-            self._screen.blit(disp_msg_for_render, (10, 10))
+            # disp_msg = str('i am '+self._instance_name)
+            # disp_msg_for_render = self._sysfont.render(disp_msg, True, (255,0,0))
+            # self._screen.blit(disp_msg_for_render, (10, 10))
+            #
+            # font = pygame.font.SysFont(None, 150)
+            #
+            # disp_msg = str('command history')
+            # disp_msg_for_render = font.render(disp_msg, True, (255,0,0))
+            # self._screen.blit(disp_msg_for_render, (10, 200))
+            #
+            # disp_msg = str(self._display_text_msg)
+            # disp_msg_for_render = font.render(disp_msg, True, (0,0,0))
+            # self._screen.blit(disp_msg_for_render, (10, 400))
 
-            font = pygame.font.SysFont(None, 150)
-
-            disp_msg = str('command history')
-            disp_msg_for_render = font.render(disp_msg, True, (255,0,0))
-            self._screen.blit(disp_msg_for_render, (10, 200))
-
-            disp_msg = str(self._display_text_msg)
-            disp_msg_for_render = font.render(disp_msg, True, (0,0,0))
-            self._screen.blit(disp_msg_for_render, (10, 400))
-
+            if self._pygame_img is not None:
+                # self._screen.blit(self._pygame_img, (10,10))
+                self._screen.blit(pygame.transform.scale(self._pygame_img, (1920, 1080)), (0, 0))
+                # print self._pygame_img
             pygame.display.update()
 
         self._mainloop_update_timer = Timer(1./self._mainloop_update_rate_hz, self._update)

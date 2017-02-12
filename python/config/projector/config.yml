@@ -6,14 +6,14 @@ instance_name: 'projector'
 
 zmq:
   heartbeat:
-    update_interval_hz: 1
+    update_interval_hz: 40
     dst:
       - 'tcp://10.110.40.200:5001'
   teleop:
     src:
       - 'tcp://10.110.40.200:5000'
-      - 'tcp://10.100.10.82:5000'
-      - 'ipc:///tmp/avatar/teleop'
+      # - 'tcp://10.100.10.82:5000'
+      # - 'ipc:///tmp/avatar/teleop'
 
 inputs:
   0:
@@ -21,7 +21,7 @@ inputs:
     connection: 'serial'
     address: '/dev/ttyS0'
     params:
-      emergency_stop_threshold_mm: 300
+      emergency_stop_threshold_mm: 500
       sampling_rate_hz: 20
   # 1:
   #   name: 'limit_sw_1'
@@ -52,7 +52,6 @@ outputs:
     params:
       speed:
         max: 255
-    is_safe: false
   1:
     driver:
       type: 'adafruit_motor_hat'
@@ -64,7 +63,6 @@ outputs:
     params:
       speed:
         max: 255
-    is_safe: false
   # 2:
   #   driver:
   #     type: 'arduino_custom_motor_hat'
@@ -77,7 +75,6 @@ outputs:
   #     steps: 200
   #     speed_rpm:
   #       max: 255
-  #   is_safe: false
   #
   # 3:
   #   driver:
@@ -92,7 +89,6 @@ outputs:
   #     speed_rpm:
   #       max: 255
   #       min: 0
-  #   is_safe: false
   #
   # 4:
   #   driver:
@@ -103,7 +99,6 @@ outputs:
   #   pin: 16
   #   type: ~
   #   params: ~
-  #   is_safe: true
   #
   # 5:
   #   driver:
@@ -114,7 +109,6 @@ outputs:
   #   pin: 13
   #   type: ~
   #   params: ~
-  #   is_safe: true
 
 actuation_map:
   # YAML format
@@ -125,29 +119,50 @@ actuation_map:
       # 1: '%d, 500, 0, 0' # pause every time
       0: '%d, 0'
       1: '%d, 0'
+      forced_exec: False
+
   BACK:
       # jsut for debug
       0: '-1*%d, 500, 0, 0' # pause every time
       1: '-1*%d, 500, 0, 0' # pause every time
+      forced_exec: False
+
   LEFT:
       # 0: '-1*%d, 500, 0, 0' # pause every time
       # 1: '%d, 500, 0, 0' # pause every time
       0: '-1*%d, 0'
       1: '%d, 0'
+      forced_exec: True
+
   RIGHT:
       # 0: '%d, 500, 0, 0' # pause every time
       # 1: '-1*%d, 500, 0, 0' # pause every time
       0: '%d, 0'
       1: '-1*%d, 0'
+      forced_exec: True
+
   STOP:
       0: '0, 0'
       1: '0, 0'
       # 2: '0, 0'
       # 3: '0, 0'
-  # RING_BELL:
+      forced_exec: True
+  # A:
   #     4: '255, 100, 0, 100, 255, 100, 0, 100, 255, 100, 0, 100, 255, 100, 0, 100, 255, 100, 0, 100'
-  #
-  # BLOWER_ON:
-  #     5: '255, 50'
-  # BLOWER_OFF:
-  #     5: '0, 50'
+  #     forced_exec: True
+  # S:
+  #     4: '255, 100, 0, 100, 255, 100, 0, 100, 255, 100, 0, 100, 255, 100, 0, 100, 255, 100, 0, 100'
+  #     forced_exec: True
+  # D:
+  #     4: '255, 100, 0, 100, 255, 100, 0, 100, 255, 100, 0, 100, 255, 100, 0, 100, 255, 100, 0, 100'
+  #     forced_exec: True
+
+#
+# function_map:
+#   RING_BELL:
+#       4: '255, 100, 0, 100, 255, 100, 0, 100, 255, 100, 0, 100, 255, 100, 0, 100, 255, 100, 0, 100'
+#
+#   BLOWER_ON:
+#       5: '255, 50'
+#   BLOWER_OFF:
+#       5: '0, 50'
