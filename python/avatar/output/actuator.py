@@ -18,6 +18,7 @@ from driver.adafruit_motorhat import AdafruitStepperMotor
 from driver.adafruit_pwm_servo_driver import PWM
 
 import threading
+import copy
 
 # outputs:
 #   0:
@@ -135,7 +136,7 @@ class Actuator(object):
         if driver_type == 'adafruit_motor_hat':
             if actuator_type == 'dc' or actuator_type == 'stepper':
                 amh = AdafruitMotorHAT(addr=driver_conf['address'])
-            print '---> ', amh
+            # print '---> ', amh
             current_driver = amh
         elif driver_type == 'adafruit_motor_hat' and actuator_type == 'servo':
             pwm_driver = PWM(address=driver_conf['address'], debug=True)
@@ -144,8 +145,10 @@ class Actuator(object):
             amd = ArduinoMotorDriver(addr=driver_conf['address'])
             current_driver = amd
         elif driver_type == 'direct':
+            # GPIO.setwarnings(False)
             GPIO.setmode(GPIO.BCM)
-            current_driver = GPIO.setup(pin, GPIO.OUT)
+            GPIO.setup(pin, GPIO.OUT)
+            current_driver = GPIO
         return current_driver
 
     def _actuate_dc_adafruit_motor_hat(self, motor_id=None, actuation_sequence=None, forced_exec=False):
@@ -223,11 +226,43 @@ class Actuator(object):
         #
         return
 
-    def _actuate_arduino_motor_hat(self, params=None, forced_exec=False):
+    def _actuate_stepper_arduino_motor_hat(self, actuation_sequence=None, forced_exec=False):
         #
         # TODO: finish implement
         #
-        pass
+          # 0:
+          #   driver:
+          #     type: 'arduino_custom_motor_hat'
+          #     connection: 'i2c'
+          #     address: 0x61
+          #   name: 'steppers'
+          #   pin: ~
+          #   type: 'stepper'
+          #   params:
+          #     # steps: 200
+          #     speed:
+          #       max: 255
+
+        print '_actuate_stepper_arduino_motor_hat::', actuation_sequence, forced_exec
+        speed_max = self.config['params']['speed']['max']
+
+        # speed_rpm, steps, wait_ms, ...
+        for i in xrange(0, len(actuation_sequence), 2):
+            direction = actuation_sequence[i]
+            speed = actuation_sequence[i+1]
+            if forced_exec == False and self.emergency_stop == True:
+                # stepper_motor.set_speed(0)
+                return
+
+            self.driver.run(direction, speed)
+            #
+            # stepper_motor.set_speed(abs(max(speed_rpm, speed_max)))
+            #
+            # if steps > 0:
+            #     stepper_motor.step(steps,  AdafruitMotorHAT.FORWARD, step_style)
+            # elif steps < 0:
+            #     stepper_motor.step(abs(steps),  AdafruitMotorHAT.BACKWARD, step_style)
+            # time.sleep(wait_ms/1000.)
 
     def _actuate_gpio(self, pin=None, actuation_sequence=None, forced_exec=False):
         # TODO: finish implement
@@ -240,6 +275,7 @@ class Actuator(object):
         #     pin: 16
         #     type: ~
         #     params: ~
+        print '_actuate_gpio', pin, actuation_sequence, forced_exec
         if pin is None or actuation_sequence is None:
             return
         for i in xrange(0, len(actuation_sequence), 2):
@@ -249,6 +285,7 @@ class Actuator(object):
 
             if forced_exec == False and self.emergency_stop == True:
                 break
+            # print '_actuate_gpio::', logic_state
             gpio_driver.output(pin, logic_state)
             time.sleep(wait_ms/1000.)
 
@@ -271,9 +308,8 @@ class Actuator(object):
                 pass
 
         elif isinstance(self.driver, ArduinoMotorDriver):
-            if self.config['type'] == 'servo':
-                #self._actuate_arduino_motor_hat()
-                pass
+            if self.config['type'] == 'stepper':
+                self._actuate_stepper_arduino_motor_hat(sequence, forced_exec)
 
         elif self.driver == GPIO:
             gpio_pin = self.config['pin']
@@ -288,7 +324,24 @@ class Actuator(object):
 
     def stop(self):
         # print self.config
-        self.actuate(self.actuation_map['STOP'], forced_exec=False)
+  # STOP:
+  #     0: '0, 0'
+  #     # 1: '0, 0'
+  #     # 2: '0, 0'
+  #     # 3: '0, 0'
+  #     forced_exec: True
+        template = copy.deepcopy(self.actuation_map['STOP'])
+        if template is None:
+            print 'there is no template'
+            return
+
+        forced_exec = False
+
+        if template.has_key('forced_exec'):
+            forced_exec = bool(template['forced_exec'])
+            del template['forced_exec']
+
+        #self.actuate(template, forced_exec)
 
     # def pause(self, state):
     #     print 'pause()', state, self.driver

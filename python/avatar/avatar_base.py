@@ -142,8 +142,10 @@ class AvatarBase(object):
         if self._emergency_stop == True:
             return
 
-        for motor_id in xrange(len(task)):
+        # for motor_id in xrange(len(task)):
+        for motor_id, value in task.iteritems():
             sequence = ast.literal_eval(task[motor_id])
+            # sequence = ast.literal_eval(task[motor_id])
             actuator = self._outputs[motor_id]
             thread = threading.Thread(target=actuator.actuate, name="actuator_th_"+str(motor_id), args=(sequence, self._current_job_forced_exec))
             actuation_threads.append(thread)
@@ -249,7 +251,8 @@ class AvatarBase(object):
         actuation_params = (filtered_msg[1])
 
         if actuation_name == 'FUNCTION':
-            actuation_name = chr(actuation_params) # replace keycode to char
+            print chr(int(actuation_params)), chr(65)
+            actuation_name = chr(int(actuation_params)) # replace keycode to char
 
         # replace parameters from given message
         template = None
@@ -265,9 +268,14 @@ class AvatarBase(object):
             forced_exec = bool(template['forced_exec'])
             del template['forced_exec']
 
-        for i in xrange(len(template)):
-            if template[i].count('%'):
-                template[i] = str(eval(template[i] % int(actuation_params))).strip('()')
+        for key, value in template.iteritems():
+            if value.count('%'):
+                template[key] = str(eval(value % int(actuation_params))).strip('()')
+
+        # for i in xrange(len(template)):
+        #     if template[i].count('%'):
+        #         template[i] = str(eval(template[i] % int(actuation_params))).strip('()')
+        print 'template', template
 
         if template is not None:
             try:
